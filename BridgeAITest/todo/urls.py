@@ -2,7 +2,8 @@ from django.urls import path
 from .views import (TodoAPIView, TodoListCreateView,
                     TodoListView, TodoCreateView,
                     TodoUpdateView, TodoDeleteView,
-                    TodoDetailView, TodoDetailEditDeleteView)
+                    TodoDetailView, TodoDetailEditDeleteView,
+                    create_todo, get_all_todos)
 
 urlpatterns = [
     path('basic/', TodoAPIView.as_view()),
@@ -13,4 +14,6 @@ urlpatterns = [
     path('todos/<int:id>/delete/', TodoDeleteView.as_view()),
     path('todos/list-create/', TodoListCreateView.as_view()),
     path('todos/<int:id>/crud/', TodoDetailEditDeleteView.as_view()),
+    path('todos/fbv/all/', get_all_todos),
+    path('todos/fbv/create/', create_todo),
 ]
