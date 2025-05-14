@@ -3,10 +3,8 @@ from rest_framework.response import Response
 from rest_framework.decorators import api_view
 from .models import Todo
 from .serializers import TodoSerializer
-from django.views.generic.edit import CreateView
 from django.http import JsonResponse
 from django.views import View
-from django.utils.decorators import method_decorator
 from .mixins import TodoListMixin, TodoDetailMixin 
 import json
 
@@ -17,62 +15,56 @@ class TodoView(TodoListMixin, TodoDetailMixin, View):
         if pk:
             todo = self.get_todo(pk)
             if todo:
-                return JsonResponse({
-                    "id" : todo.id,
-                    "title": todo.title,
-                    "completed": todo.completed
-                },status=200)
+                serializer = TodoSerializer(todo)
+                return Response(serializer.data)
             else:
-                return JsonResponse({
-                    "error": "todo couldn't be found"}, status=404)
+                return Response({
+                    "error": "Todo couldn't be found"}, status=404)
         else:
-            todos = list(self.get_todos().values())
-            return JsonResponse(todos, safe=False)
+            todos = get_all_todos()
+            serializer = TodoSerializer(data = todos.data, many=True)
+            return Response(serializer.data)
         
     def post(self, request):
         data = json.loads(request.body)
-        title = data.get('title')
-        completed = data.get('completed')
-        todo = Todo.objects.create(title="Some Title", completed=False)
-        print(type(todo))
-        return JsonResponse({
-                    "id" : todo.id,
-                    "title": todo.title,
-                    "completed": todo.completed
-                },status=201)
+        serializer = TodoSerializer(data = data)
+        if serializer.is_valid():
+            serializer.save()
+            return JsonResponse(serializer.data,status=201)
+        return JsonResponse(serializer.errors, status= 400)
         
     def put(self,request, pk = None):
         if not pk:
-            return JsonResponse({
+            return Response({
                 "error", "Missing ID ",
             }, status = 400)
         todo = self.get_todo(pk)
         if todo:
-            data = json.load(request.body)
-            todo.title = data.get('title', todo.title)
-            todo.completed = data.get('completed', todo.completed)    
-            todo.save()
-            return JsonResponse({
-                'message' : "Todo updated successfully",
-            })
-        return JsonResponse({
+            data = json.loads(request.body)
+            serializer = TodoSerializer(todo, data=data)
+            if serializer.is_valid():
+                return Response({
+                    'message' : "Todo updated successfully",
+                    'todo' : serializer.data,
+                })
+        return Response({
             'error': "Todo not found !"
         }, status= 404)
         
         
     def delete(self,request,pk=None):
         if not pk:
-            return JsonResponse({
+            return Response({
                 "error", "Missing ID ",
                 }, status = 400)
         todo = self.get_todo(pk)
         if todo:
             todo.delete()
-            return JsonResponse({
+            return Response({
                 "message": "todo deleted successfully"
             })
             
-        return JsonResponse({
+        return Response({
             'error': "Todo not found !"
         }, status= 404)
 
