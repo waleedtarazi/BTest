@@ -1,16 +1,19 @@
 from django.urls import path
 from .views import (TodoListView, TodoDetailView,
-                    TodoView, 
+                    TodoView, TodoViewSet,
                     create_todo, get_all_todos,
                     update_todo, get_todo,
                     delete_todo)
-
+from rest_framework.routers import DefaultRouter
+todo_router = DefaultRouter()
+todo_router.register(r'todos/router', TodoViewSet, basename='todo')
 # DRF: django rest framework
 # CBV: class based view
 # FBV: funstion based view
 # allbasics: get,post,all,put,delete
 #  
-urlpatterns = [
+urlpatterns = todo_router.urls
+urlpatterns += [
     path('todos/django/CBV/allbasics/', TodoView.as_view()),
     path('todos/django/CBV/allbasics/<int:pk>/', TodoView.as_view()),
     
