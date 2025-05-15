@@ -1,4 +1,5 @@
 from rest_framework.views import APIView
+from rest_framework import generics
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
 from .models import Todo
@@ -16,14 +17,12 @@ class TodoView(TodoListMixin, TodoDetailMixin, View):
             todo = self.get_todo(pk)
             if todo:
                 serializer = TodoSerializer(todo)
-                return Response(serializer.data)
-            else:
-                return Response({
-                    "error": "Todo couldn't be found"}, status=404)
-        else:
-            todos = get_all_todos()
-            serializer = TodoSerializer(data = todos.data, many=True)
-            return Response(serializer.data)
+                return JsonResponse(serializer.data, safe=False)
+            return JsonResponse({
+                "error": "Todo couldn't be found"}, status=404)
+        todos = self.get_todos()
+        serializer = TodoSerializer(instance = todos, many=True)
+        return JsonResponse(serializer.data, safe=False)
         
     def post(self, request):
         data = json.loads(request.body)
@@ -35,7 +34,7 @@ class TodoView(TodoListMixin, TodoDetailMixin, View):
         
     def put(self,request, pk = None):
         if not pk:
-            return Response({
+            return JsonResponse({
                 "error", "Missing ID ",
             }, status = 400)
         todo = self.get_todo(pk)
@@ -43,28 +42,29 @@ class TodoView(TodoListMixin, TodoDetailMixin, View):
             data = json.loads(request.body)
             serializer = TodoSerializer(todo, data=data)
             if serializer.is_valid():
-                return Response({
+                serializer.save()
+                return JsonResponse({
                     'message' : "Todo updated successfully",
                     'todo' : serializer.data,
                 })
-        return Response({
+        return JsonResponse({
             'error': "Todo not found !"
         }, status= 404)
         
         
     def delete(self,request,pk=None):
         if not pk:
-            return Response({
-                "error", "Missing ID ",
+            return JsonResponse({
+                "error": "Missing ID ",
                 }, status = 400)
         todo = self.get_todo(pk)
         if todo:
             todo.delete()
-            return Response({
+            return JsonResponse({
                 "message": "todo deleted successfully"
             })
             
-        return Response({
+        return JsonResponse({
             'error': "Todo not found !"
         }, status= 404)
 
@@ -75,7 +75,16 @@ class TodoView(TodoListMixin, TodoDetailMixin, View):
 @api_view(['GET'])
 def get_all_todos(request):
     todos = Todo.objects.all()
-    serializer = TodoSerializer(data = todos.data, many=True)
+    serializer = TodoSerializer(instance = todos, many=True)
+    return Response(serializer.data)
+
+@api_view(['GET'])
+def get_todo(request, pk):
+    try:
+        todo = Todo.objects.get(pk=pk)
+    except Todo.DoesNotExist:
+        return Response({'error': 'Todo not found'}, status=404)
+    serializer = TodoSerializer(instance=todo)
     return Response(serializer.data)
 
 @api_view(['POST'])
@@ -86,19 +95,37 @@ def create_todo(request):
         return Response(serializer.data, status=201)
     else:
         return Response(serializer.errors, status=400)
-
-## API View(Class based view) ##
-class TodoAPIView(APIView):
-    def get(self, request):
-        todos = Todo.objects.all()
-        serializer = TodoSerializer(todos, many=True)
-        return Response(serializer.data)
     
-    def post(self,request):
-        serialzer = TodoSerializer(data = request.data)
-        if serialzer.is_valid():
-            serialzer.save()
-            return Response(serialzer.data, status=201)
-        else:
-            return Response(serialzer.errors, status=400)
+
+@api_view(['PUT'])
+def update_todo(request, pk):
+    try:
+        todo = Todo.objects.get(pk=pk)
+    except:
+        return Response({'error': 'Todo not found'}, status=404)
+    update_serializer = TodoSerializer(todo, request.data)
+    if update_serializer.is_valid():
+        update_serializer.save()
+        return Response({'message': 'todo updated',
+                         'todo': update_serializer.data})
+    return Response({'error':update_serializer.errors}, status=400)    
+
+@api_view(['DELETE'])
+def delete_todo(request,pk):
+    try:
+        todo = Todo.objects.get(pk=pk)
+    except:
+        return Response({'error': 'todo not found'}, status=404)
+    todo.delete()
+    return Response({'message': 'todo deleted '})
+    
+
+## API View(Class based view, Mixins) ##
+class TodoListView(generics.ListCreateAPIView):
+    queryset = Todo.objects.all()
+    serializer_class = TodoSerializer
+
+class TodoDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Todo.objects.all()
+    serializer_class = TodoSerializer
 
