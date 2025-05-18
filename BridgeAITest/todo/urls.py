@@ -8,8 +8,8 @@ from rest_framework.routers import DefaultRouter
 todo_router = DefaultRouter()
 todo_router.register(r'todos/router', TodoViewSet, basename='todo')
 # DRF: django rest framework
-# CBV: class based view
 # FBV: funstion based view
+# CBV: class based view
 # allbasics: get,post,all,put,delete
 #  
 urlpatterns = todo_router.urls
@@ -25,4 +25,5 @@ urlpatterns += [
 
     path('todos/DRF/CBV/', TodoListView.as_view()),
     path('todos/DRF/CBV/<int:pk>/', TodoDetailView.as_view()),
+     
 ]

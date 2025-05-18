@@ -1,2 +1,4 @@
 django
 djangorestframework
+djangorestframework-simplejwt
+drf_yasg
