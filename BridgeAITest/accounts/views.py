@@ -1,11 +1,14 @@
 # views.py
 from rest_framework.views import APIView
+from drf_yasg.utils import swagger_auto_schema
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate
 from .serializers import UserSerializer
 from rest_framework.permissions import AllowAny
 
+
+@swagger_auto_schema(request_body=UserSerializer)
 class SignupView(APIView):
     permission_classes = [AllowAny]
 
@@ -17,8 +20,9 @@ class SignupView(APIView):
             return Response({'token': token.key}, status=201)
         return Response(serializer.errors, status=400)
 
-
+@swagger_auto_schema(request_body=UserSerializer)
 class LoginView(APIView):
+    
     permission_classes = [AllowAny]
 
     def post(self, request):
