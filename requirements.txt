@@ -1,5 +1,15 @@
+python-dotenv
 django
 djangorestframework
 djangorestframework-simplejwt
 drf_yasg
 django-jazzmin
+django-filter
+langchain
+openai
+langchain-openai
+langchain-huggingface
+huggingface_hub
+llama-cpp-python
+psycopg2-binary
+pydantic

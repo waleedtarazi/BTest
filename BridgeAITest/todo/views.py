@@ -3,6 +3,7 @@ from rest_framework.authentication import SessionAuthentication,BasicAuthenticat
 from rest_framework import generics, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.decorators import api_view, permission_classes
 from .models import Todo
 from .serializers import TodoSerializer
@@ -152,6 +153,9 @@ class TodoDetailView(generics.RetrieveUpdateDestroyAPIView):
 class TodoViewSet(viewsets.ModelViewSet):
     serializer_class = TodoSerializer
     permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['completed']
+    
     
     def get_queryset(self):
         return Todo.objects.filter(user=self.request.user)

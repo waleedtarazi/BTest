@@ -33,7 +33,9 @@ ALLOWED_HOSTS = []
 INSTALLED_APPS = [
     'jazzmin',
     'todo',
+    'chat',
     'rest_framework',
+    'django_filters',
     'rest_framework.authtoken',
     'drf_yasg',
     'django.contrib.admin',
@@ -73,6 +75,9 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend'
+    ]
 }
 
 ROOT_URLCONF = 'BridgeAITest.urls'
