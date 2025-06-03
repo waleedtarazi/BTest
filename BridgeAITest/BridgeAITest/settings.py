@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-1m)z+#_(x!_zl*db8i@+dk4y)++ysei!x7l%+y8t@8!vmac*k+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']  # For development only, change in production
 
 
 # Application definition
@@ -34,6 +34,10 @@ INSTALLED_APPS = [
     'jazzmin',
     'todo',
     'chat',
+    'LLMChat',
+    'daphne',  # Add daphne first
+    'channels',
+    'corsheaders',
     'rest_framework',
     'django_filters',
     'rest_framework.authtoken',
@@ -59,6 +63,7 @@ SWAGGER_SETTINGS = {
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     #'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -152,3 +157,36 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Add Channels configuration
+ASGI_APPLICATION = 'BridgeAITest.asgi.application'
+
+# Channel layers configuration
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+        "CONFIG": {
+            "capacity": 1500,  # Maximum number of messages that can be handled
+        },
+    },
+}
+
+# WebSocket settings
+WEBSOCKET_URL = '/ws/'
+WEBSOCKET_ACCEPT_ALL = True  # For development only
+
+# CORS settings with WebSocket support
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_METHODS = [
+    'GET',
+    'POST',
+    'PUT',
+    'PATCH',
+    'DELETE',
+    'OPTIONS'
+]

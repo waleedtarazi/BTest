@@ -21,6 +21,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/',  include('todo.urls')),
     path('api/langchain/',  include('chat.urls')),
+    path('api/llm/',  include('LLMChat.urls')),
     path('api/auth/', include('accounts.urls')),
     path('swagger/', schema_view.with_ui('swagger',
                                          cache_timeout=0), name='schema-swagger-ui'),

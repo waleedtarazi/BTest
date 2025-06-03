@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chat Test Interface</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        .chat-container {
+            border: 1px solid #ccc;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .response {
+            white-space: pre-wrap;
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            min-height: 100px;
+        }
+        .input-group {
+            margin-bottom: 10px;
+        }
+        textarea {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        button {
+            padding: 8px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .mode-switch {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Chat Test Interface</h1>
+    
+    <div class="mode-switch">
+        <label>
+            <input type="radio" name="mode" value="stream" checked> Streaming (WebSocket)
+        </label>
+        <label>
+            <input type="radio" name="mode" value="regular"> Regular (HTTP)
+        </label>
+    </div>
+
+    <div class="chat-container">
+        <div class="input-group">
+            <label for="message">Message:</label>
+            <textarea id="message" rows="4">What is the capital of France?</textarea>
+        </div>
+        
+        <div class="input-group">
+            <label for="system-prompt">System Prompt (optional):</label>
+            <textarea id="system-prompt" rows="2">You are a helpful assistant.</textarea>
+        </div>
+
+        <button onclick="sendMessage()">Send Message</button>
+        
+        <div class="response" id="response"></div>
+    </div>
+
+    <script>
+        let ws = null;
+        let fullResponse = '';
+        let connectionAttempts = 0;
+        const MAX_RECONNECT_ATTEMPTS = 5;
+
+        function initWebSocket() {
+            if (ws) {
+                ws.close();
+            }
+
+            try {
+                const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${wsProtocol}//${window.location.host}/ws/chat/`;
+                console.log('Connecting to WebSocket at:', wsUrl);
+                
+                ws = new WebSocket(wsUrl);
+                
+                ws.onopen = function(e) {
+                    console.log('WebSocket Connected Successfully');
+                    document.getElementById('response').textContent = 'Connected to chat server';
+                    connectionAttempts = 0; // Reset connection attempts on successful connection
+                };
+
+                ws.onmessage = function(e) {
+                    console.log('Received message:', e.data);
+                    const data = JSON.parse(e.data);
+                    if (data.error) {
+                        document.getElementById('response').textContent = 'Error: ' + data.error;
+                        return;
+                    }
+                    
+                    if (data.type === 'chat.message' && data.chunk) {
+                        fullResponse += data.chunk;
+                        document.getElementById('response').textContent = fullResponse;
+                    } else if (data.type === 'chat.complete') {
+                        console.log('Stream complete');
+                    }
+                };
+
+                ws.onclose = function(e) {
+                    console.log('WebSocket Disconnected. Code:', e.code, 'Reason:', e.reason);
+                    document.getElementById('response').textContent = 'Disconnected from chat server.';
+                    
+                    // Attempt to reconnect if we haven't exceeded max attempts
+                    if (connectionAttempts < MAX_RECONNECT_ATTEMPTS) {
+                        connectionAttempts++;
+                        const delay = Math.min(1000 * Math.pow(2, connectionAttempts), 10000);
+                        document.getElementById('response').textContent = `Reconnecting in ${delay/1000} seconds... (Attempt ${connectionAttempts}/${MAX_RECONNECT_ATTEMPTS})`;
+                        setTimeout(initWebSocket, delay);
+                    } else {
+                        document.getElementById('response').textContent = 'Failed to connect after multiple attempts. Please refresh the page to try again.';
+                    }
+                };
+
+                ws.onerror = function(e) {
+                    console.error('WebSocket Error:', e);
+                    document.getElementById('response').textContent = 'WebSocket Error. Check console for details.';
+                };
+            } catch (error) {
+                console.error('Error creating WebSocket:', error);
+                document.getElementById('response').textContent = 'Error creating WebSocket connection: ' + error.message;
+            }
+        }
+
+        async function sendMessage() {
+            const message = document.getElementById('message').value;
+            const systemPrompt = document.getElementById('system-prompt').value;
+            const isStreaming = document.querySelector('input[name="mode"]:checked').value === 'stream';
+            
+            document.getElementById('response').textContent = 'Waiting for response...';
+            fullResponse = '';
+
+            if (isStreaming) {
+                // WebSocket/Streaming mode
+                if (!ws || ws.readyState !== WebSocket.OPEN) {
+                    document.getElementById('response').textContent = 'Connecting to server...';
+                    initWebSocket();
+                    // Wait for connection
+                    await new Promise((resolve) => {
+                        const checkConnection = setInterval(() => {
+                            if (ws.readyState === WebSocket.OPEN) {
+                                clearInterval(checkConnection);
+                                resolve();
+                            }
+                        }, 100);
+                        // Timeout after 5 seconds
+                        setTimeout(() => {
+                            clearInterval(checkConnection);
+                            document.getElementById('response').textContent = 'Connection timeout. Please try again.';
+                            resolve();
+                        }, 5000);
+                    });
+                }
+                
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        message: message,
+                        system_prompt: systemPrompt,
+                        stream: true
+                    }));
+                } else {
+                    document.getElementById('response').textContent = 'Not connected to server. Please try again.';
+                }
+            } else {
+                // Regular HTTP mode
+                try {
+                    const response = await fetch('/api/llm/chat/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            message: message,
+                            system_prompt: systemPrompt,
+                            stream: false
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    if (data.error) {
+                        document.getElementById('response').textContent = 'Error: ' + JSON.stringify(data.error);
+                    } else {
+                        document.getElementById('response').textContent = data.reply;
+                    }
+                } catch (error) {
+                    document.getElementById('response').textContent = 'Error: ' + error.message;
+                }
+            }
+        }
+
+        // Initialize WebSocket on page load
+        initWebSocket();
+    </script>
+</body>
+</html> 
