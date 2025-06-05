@@ -23,6 +23,21 @@
             margin-top: 10px;
             min-height: 100px;
         }
+        .metadata {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #e9ecef;
+            border-radius: 5px;
+            font-size: 0.9em;
+        }
+        .metadata-item {
+            margin-right: 15px;
+            display: inline-block;
+        }
+        .token-usage {
+            color: #666;
+            font-family: monospace;
+        }
         .input-group {
             margin-bottom: 10px;
         }
@@ -40,12 +55,42 @@
             border: none;
             border-radius: 4px;
             cursor: pointer;
+            margin-right: 10px;
         }
         button:hover {
             background-color: #45a049;
         }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
         .mode-switch {
             margin-bottom: 20px;
+        }
+        .controls {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .voice-controls {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border-radius: 5px;
+        }
+        .status {
+            margin-left: 10px;
+            color: #666;
+        }
+        .audio-toggle {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .audio-toggle label {
+            margin-left: 8px;
         }
     </style>
 </head>
@@ -61,6 +106,17 @@
         </label>
     </div>
 
+    <div class="audio-toggle">
+        <input type="checkbox" id="enable-tts" checked>
+        <label for="enable-tts">Enable Text-to-Speech</label>
+    </div>
+
+    <div class="voice-controls">
+        <button id="startVoice" onclick="startVoiceInput()">Start Voice Input</button>
+        <button id="stopVoice" onclick="stopVoiceInput()" disabled>Stop Voice Input</button>
+        <span id="voiceStatus" class="status">Voice input ready</span>
+    </div>
+
     <div class="chat-container">
         <div class="input-group">
             <label for="message">Message:</label>
@@ -72,18 +128,37 @@
             <textarea id="system-prompt" rows="2">You are a helpful assistant.</textarea>
         </div>
 
-        <button onclick="sendMessage()">Send Message</button>
+        <div class="controls">
+            <button onclick="sendMessage()">Send Message</button>
+            <span id="status" class="status"></span>
+        </div>
         
         <div class="response" id="response"></div>
+        <div class="metadata">
+            <div class="metadata-item">
+                Conversation ID: <span id="conversation-id">-</span>
+            </div>
+            <div class="metadata-item token-usage">
+                Tokens: <span id="input-tokens">0</span> in / <span id="output-tokens">0</span> out / <span id="total-tokens">0</span> total
+            </div>
+        </div>
     </div>
 
     <script>
         let ws = null;
+        let audioWs = null;
+        let voiceWs = null;
         let fullResponse = '';
         let connectionAttempts = 0;
         const MAX_RECONNECT_ATTEMPTS = 5;
 
-        function initWebSocket() {
+        function initWebSockets() {
+            initChatWebSocket();
+            initAudioWebSocket();
+            initVoiceWebSocket();
+        }
+
+        function initChatWebSocket() {
             if (ws) {
                 ws.close();
             }
@@ -91,98 +166,193 @@
             try {
                 const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
                 const wsUrl = `${wsProtocol}//${window.location.host}/ws/chat/`;
-                console.log('Connecting to WebSocket at:', wsUrl);
+                console.log('Connecting to Chat WebSocket at:', wsUrl);
                 
                 ws = new WebSocket(wsUrl);
                 
                 ws.onopen = function(e) {
-                    console.log('WebSocket Connected Successfully');
-                    document.getElementById('response').textContent = 'Connected to chat server';
-                    connectionAttempts = 0; // Reset connection attempts on successful connection
+                    console.log('Chat WebSocket Connected');
+                    updateStatus('Connected to chat server');
+                    connectionAttempts = 0;
                 };
 
                 ws.onmessage = function(e) {
-                    console.log('Received message:', e.data);
+                    console.log('Received chat message:', e.data);
                     const data = JSON.parse(e.data);
                     if (data.error) {
-                        document.getElementById('response').textContent = 'Error: ' + data.error;
+                        updateStatus('Error: ' + data.error);
                         return;
                     }
                     
-                    if (data.type === 'chat.message' && data.chunk) {
-                        fullResponse += data.chunk;
-                        document.getElementById('response').textContent = fullResponse;
+                    if (data.type === 'chat.message') {
+                        if (data.chunk) {
+                            fullResponse += data.chunk;
+                            document.getElementById('response').textContent = fullResponse;
+                        } else {
+                            document.getElementById('response').textContent = data.reply;
+                        }
+                        
+                        // Update metadata if available
+                        if (data.conversation_id || data.usage) {
+                            updateMetadata(data.conversation_id, data.usage);
+                        }
                     } else if (data.type === 'chat.complete') {
                         console.log('Stream complete');
+                        updateStatus('Response complete');
                     }
                 };
 
-                ws.onclose = function(e) {
-                    console.log('WebSocket Disconnected. Code:', e.code, 'Reason:', e.reason);
-                    document.getElementById('response').textContent = 'Disconnected from chat server.';
-                    
-                    // Attempt to reconnect if we haven't exceeded max attempts
-                    if (connectionAttempts < MAX_RECONNECT_ATTEMPTS) {
-                        connectionAttempts++;
-                        const delay = Math.min(1000 * Math.pow(2, connectionAttempts), 10000);
-                        document.getElementById('response').textContent = `Reconnecting in ${delay/1000} seconds... (Attempt ${connectionAttempts}/${MAX_RECONNECT_ATTEMPTS})`;
-                        setTimeout(initWebSocket, delay);
-                    } else {
-                        document.getElementById('response').textContent = 'Failed to connect after multiple attempts. Please refresh the page to try again.';
-                    }
-                };
-
-                ws.onerror = function(e) {
-                    console.error('WebSocket Error:', e);
-                    document.getElementById('response').textContent = 'WebSocket Error. Check console for details.';
-                };
+                ws.onclose = handleWebSocketClose(ws, 'chat', initChatWebSocket);
+                ws.onerror = handleWebSocketError('chat');
             } catch (error) {
-                console.error('Error creating WebSocket:', error);
-                document.getElementById('response').textContent = 'Error creating WebSocket connection: ' + error.message;
+                console.error('Error creating Chat WebSocket:', error);
+                updateStatus('Error creating chat connection: ' + error.message);
             }
+        }
+
+        function initAudioWebSocket() {
+            if (audioWs) {
+                audioWs.close();
+            }
+
+            try {
+                const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${wsProtocol}//${window.location.host}/ws/audio/`;
+                console.log('Connecting to Audio WebSocket at:', wsUrl);
+                
+                audioWs = new WebSocket(wsUrl);
+                
+                audioWs.onopen = function(e) {
+                    console.log('Audio WebSocket Connected');
+                };
+
+                audioWs.onmessage = function(e) {
+                    console.log('Received audio message:', e.data);
+                    const data = JSON.parse(e.data);
+                    if (data.error) {
+                        updateStatus('Audio Error: ' + data.error);
+                    }
+                };
+
+                audioWs.onclose = handleWebSocketClose(audioWs, 'audio', initAudioWebSocket);
+                audioWs.onerror = handleWebSocketError('audio');
+            } catch (error) {
+                console.error('Error creating Audio WebSocket:', error);
+            }
+        }
+
+        function initVoiceWebSocket() {
+            if (voiceWs) {
+                voiceWs.close();
+            }
+
+            try {
+                const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${wsProtocol}//${window.location.host}/ws/voice/`;
+                
+                console.log('Connecting to Voice WebSocket at:', wsUrl);
+                
+                voiceWs = new WebSocket(wsUrl);
+                
+                voiceWs.onopen = function(e) {
+                    console.log('Voice WebSocket Connected');
+                    document.getElementById('startVoice').disabled = false;
+                };
+
+                voiceWs.onmessage = function(e) {
+                    console.log('Received voice message:', e.data);
+                    const data = JSON.parse(e.data);
+                    if (data.error) {
+                        updateVoiceStatus('Voice Error: ' + data.error);
+                    } else if (data.type === 'voice.transcription') {
+                        document.getElementById('message').value = data.text;
+                    }
+                };
+
+                voiceWs.onclose = handleWebSocketClose(voiceWs, 'voice', initVoiceWebSocket);
+                voiceWs.onerror = handleWebSocketError('voice');
+            } catch (error) {
+                console.error('Error creating Voice WebSocket:', error);
+            }
+        }
+
+        function handleWebSocketClose(socket, type, reconnectFunc) {
+            return function(e) {
+                console.log(`${type} WebSocket Disconnected. Code:`, e.code, 'Reason:', e.reason);
+                if (type === 'chat') {
+                    updateStatus(`Disconnected from ${type} server.`);
+                }
+                
+                if (connectionAttempts < MAX_RECONNECT_ATTEMPTS) {
+                    connectionAttempts++;
+                    const delay = Math.min(1000 * Math.pow(2, connectionAttempts), 10000);
+                    if (type === 'chat') {
+                        updateStatus(`Reconnecting to ${type} in ${delay/1000} seconds... (Attempt ${connectionAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+                    }
+                    setTimeout(reconnectFunc, delay);
+                } else {
+                    if (type === 'chat') {
+                        updateStatus(`Failed to connect to ${type} after multiple attempts. Please refresh the page.`);
+                    }
+                }
+            };
+        }
+
+        function handleWebSocketError(type) {
+            return function(e) {
+                console.error(`${type} WebSocket Error:`, e);
+                if (type === 'chat') {
+                    updateStatus(`${type} WebSocket Error. Check console for details.`);
+                }
+            };
+        }
+
+        function updateStatus(message) {
+            document.getElementById('status').textContent = message;
+        }
+
+        function updateMetadata(conversationId, usage) {
+            if (conversationId) {
+                document.getElementById('conversation-id').textContent = conversationId;
+            }
+            if (usage) {
+                document.getElementById('input-tokens').textContent = usage.input_tokens || 0;
+                document.getElementById('output-tokens').textContent = usage.output_tokens || 0;
+                document.getElementById('total-tokens').textContent = usage.total_tokens || 0;
+            }
+        }
+
+        function updateVoiceStatus(message) {
+            document.getElementById('voiceStatus').textContent = message;
         }
 
         async function sendMessage() {
             const message = document.getElementById('message').value;
             const systemPrompt = document.getElementById('system-prompt').value;
             const isStreaming = document.querySelector('input[name="mode"]:checked').value === 'stream';
+            const enableTTS = document.getElementById('enable-tts').checked;
             
             document.getElementById('response').textContent = 'Waiting for response...';
             fullResponse = '';
 
             if (isStreaming) {
-                // WebSocket/Streaming mode
                 if (!ws || ws.readyState !== WebSocket.OPEN) {
-                    document.getElementById('response').textContent = 'Connecting to server...';
-                    initWebSocket();
-                    // Wait for connection
-                    await new Promise((resolve) => {
-                        const checkConnection = setInterval(() => {
-                            if (ws.readyState === WebSocket.OPEN) {
-                                clearInterval(checkConnection);
-                                resolve();
-                            }
-                        }, 100);
-                        // Timeout after 5 seconds
-                        setTimeout(() => {
-                            clearInterval(checkConnection);
-                            document.getElementById('response').textContent = 'Connection timeout. Please try again.';
-                            resolve();
-                        }, 5000);
-                    });
+                    updateStatus('Connecting to server...');
+                    initChatWebSocket();
+                    await waitForConnection(ws, 'chat');
                 }
                 
                 if (ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({
                         message: message,
                         system_prompt: systemPrompt,
-                        stream: true
+                        stream: true,
+                        enable_tts: enableTTS
                     }));
                 } else {
-                    document.getElementById('response').textContent = 'Not connected to server. Please try again.';
+                    updateStatus('Not connected to server. Please try again.');
                 }
             } else {
-                // Regular HTTP mode
                 try {
                     const response = await fetch('/api/llm/chat/', {
                         method: 'POST',
@@ -192,24 +362,78 @@
                         body: JSON.stringify({
                             message: message,
                             system_prompt: systemPrompt,
-                            stream: false
+                            stream: false,
+                            enable_tts: enableTTS
                         })
                     });
                     
                     const data = await response.json();
                     if (data.error) {
-                        document.getElementById('response').textContent = 'Error: ' + JSON.stringify(data.error);
+                        updateStatus('Error: ' + JSON.stringify(data.error));
                     } else {
                         document.getElementById('response').textContent = data.reply;
+                        updateMetadata(data.conversation_id, data.usage);
                     }
                 } catch (error) {
-                    document.getElementById('response').textContent = 'Error: ' + error.message;
+                    updateStatus('Error: ' + error.message);
                 }
             }
         }
 
-        // Initialize WebSocket on page load
-        initWebSocket();
+        async function waitForConnection(socket, type) {
+            return new Promise((resolve) => {
+                const checkConnection = setInterval(() => {
+                    if (socket.readyState === WebSocket.OPEN) {
+                        clearInterval(checkConnection);
+                        resolve();
+                    }
+                }, 100);
+                setTimeout(() => {
+                    clearInterval(checkConnection);
+                    updateStatus(`${type} connection timeout. Please try again.`);
+                    resolve();
+                }, 5000);
+            });
+        }
+
+        let isRecording = false;
+
+        async function startVoiceInput() {
+            if (!voiceWs || voiceWs.readyState !== WebSocket.OPEN) {
+                updateVoiceStatus('Connecting to voice server...');
+                initVoiceWebSocket();
+                await waitForConnection(voiceWs, 'voice');
+            }
+
+            if (voiceWs.readyState === WebSocket.OPEN) {
+                isRecording = true;
+                document.getElementById('startVoice').disabled = true;
+                document.getElementById('stopVoice').disabled = false;
+                updateVoiceStatus('Recording...');
+                
+                voiceWs.send(JSON.stringify({
+                    type: 'voice.start'
+                }));
+            } else {
+                updateVoiceStatus('Not connected to voice server. Please try again.');
+            }
+        }
+
+        function stopVoiceInput() {
+            if (isRecording && voiceWs && voiceWs.readyState === WebSocket.OPEN) {
+                isRecording = false;
+                document.getElementById('startVoice').disabled = false;
+                document.getElementById('stopVoice').disabled = true;
+                updateVoiceStatus('Processing voice input...');
+                
+                voiceWs.send(JSON.stringify({
+                    type: 'voice.stop'
+                }));
+            }
+        }
+
+        // Initialize WebSockets on page load
+        initWebSockets();
     </script>
 </body>
 </html> 

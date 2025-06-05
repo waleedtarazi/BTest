@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_cohere import ChatCohere
-from langchain_huggingface import ChatHuggingFace,HuggingFaceEndpoint
+from langchain_huggingface import HuggingFaceEndpoint
 from langchain_community.chat_models import (
     ChatOpenAI, 
     ChatAnthropic,

@@ -4,13 +4,11 @@ from langchain_community.chat_models import ChatOpenAI, ChatAnthropic
 from langchain_huggingface import HuggingFaceEndpoint
 from langchain_cohere import ChatCohere
 from .models import ModelProvider, Conversation, ChatLog, Tool
-from typing import List, Dict, Any, Optional, AsyncGenerator, Union
-from langchain_core.language_models.chat_models import BaseChatModel
+from typing import List, Dict, Any, Optional, AsyncGenerator
 from langchain_core.tools import BaseTool
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from .llm_providers import LLMProviderFactory
 from asgiref.sync import sync_to_async
-import asyncio
 import logging
 
 logger = logging.getLogger(__name__)
@@ -89,16 +87,6 @@ class ChatService:
         if self.llm is None:
             if self.strategy is None:
                 self.strategy = await LLMProviderFactory.get_strategy(self.provider.provider)
-            
-            config = {
-                'model_name': self.provider.model_name,
-                'temperature': self.provider.temperature,
-                'max_tokens': self.provider.max_tokens,
-                'top_p': self.provider.top_p,
-                'api_key': self.provider.api_key,
-                'extra_settings': self.provider.extra_settings,
-                'streaming': True  # Enable streaming by default
-            }
             self.llm = await get_chat_model(self.provider)
     
     async def get_conversation_history(self, conversation_id: int) -> List[dict]:
@@ -114,6 +102,7 @@ class ChatService:
 
     async def prepare_messages(self, message: str, conversation_id: Optional[int] = None, system_prompt: Optional[str] = None) -> List[Any]:
         """Prepare messages for chat."""
+        ## TODO: i guess it's better to store the conversation in the session(cache)
         try:
             # Get or create conversation
             conversation = None
@@ -150,7 +139,6 @@ class ChatService:
         try:
             await self._ensure_llm()
             messages, conversation = await self.prepare_messages(message, conversation_id, system_prompt)
-            
             full_response = []
             async for chunk in self.llm.astream(messages):
                 if chunk.content:
@@ -158,6 +146,7 @@ class ChatService:
                     yield chunk.content
             
             # Log the chat after completion
+            print(f"CHAT-FULL-RESPONSE: {full_response}")
             await create_chat_log(
                 provider=self.provider,
                 conversation=conversation,
